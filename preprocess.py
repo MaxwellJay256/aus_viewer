@@ -25,6 +25,54 @@ DEPTH_PER_SAMPLE_CM = SOUND_SPEED_M_S / (2.0 * SAMPLE_RATE_HZ) * 100.0  # ≈0.0
 
 CONFIG_PATH = Path(__file__).resolve().parent / "config" / "preprocess.json"
 
+# 显示 gamma（不属于预处理管线，但与预处理开关配套保存）
+GAMMA_NORMAL_KEY = "gamma_normal"
+GAMMA_PROCESSED_KEY = "gamma_processed"
+DEFAULT_GAMMA_NORMAL = 0.2
+DEFAULT_GAMMA_PROCESSED = 1.0
+GAMMA_MIN = 0.1
+GAMMA_MAX = 3.0
+
+
+@dataclass
+class DisplayParams:
+    """显示参数：原始/预处理两种视图各自记住 gamma。"""
+
+    gamma_normal: float = DEFAULT_GAMMA_NORMAL
+    gamma_processed: float = DEFAULT_GAMMA_PROCESSED
+
+    def get(self, processed: bool) -> float:
+        return self.gamma_processed if processed else self.gamma_normal
+
+    def set(self, processed: bool, value: float) -> None:
+        value = min(GAMMA_MAX, max(GAMMA_MIN, float(value)))
+        if processed:
+            self.gamma_processed = value
+        else:
+            self.gamma_normal = value
+
+    def to_dict(self) -> dict:
+        return {
+            GAMMA_NORMAL_KEY: self.gamma_normal,
+            GAMMA_PROCESSED_KEY: self.gamma_processed,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "DisplayParams":
+        params = cls()
+        for processed, key, default in (
+            (False, GAMMA_NORMAL_KEY, DEFAULT_GAMMA_NORMAL),
+            (True, GAMMA_PROCESSED_KEY, DEFAULT_GAMMA_PROCESSED),
+        ):
+            try:
+                value = float((data or {}).get(key, default))
+            except (TypeError, ValueError):
+                value = default
+            if not np.isfinite(value):
+                value = default
+            params.set(processed, value)
+        return params
+
 
 @dataclass
 class PreprocessParams:
@@ -113,24 +161,42 @@ class PreprocessParams:
 
 
 def load_params(path: Path = CONFIG_PATH) -> PreprocessParams:
-    """读取本地参数文件；不存在或损坏时返回默认参数。"""
+    """读取本地参数文件；不存在或损坏时返回默认参数（忽略显示字段）。"""
+    return PreprocessParams.from_dict(_read_raw_config(path))
+
+
+def _read_raw_config(path: Path = CONFIG_PATH) -> dict:
     try:
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return PreprocessParams()
-    if not isinstance(raw, dict):
-        return PreprocessParams()
-    return PreprocessParams.from_dict(raw)
+        return {}
+    return raw if isinstance(raw, dict) else {}
 
 
-def save_params(params: PreprocessParams, path: Path = CONFIG_PATH) -> None:
-    """原子写入参数文件（先写临时文件再替换）。"""
+def load_display_params(path: Path = CONFIG_PATH) -> DisplayParams:
+    """读取显示参数（gamma）；文件缺失或字段无效时回退默认值。"""
+    return DisplayParams.from_dict(_read_raw_config(path))
+
+
+def save_params(
+    params: PreprocessParams,
+    path: Path = CONFIG_PATH,
+    display: Optional[DisplayParams] = None,
+) -> None:
+    """原子写入参数文件（先写临时文件再替换）。
+
+    ``display`` 为 None 时保留文件中已有的显示参数，避免预处理参数保存时把
+    gamma 字段覆盖掉。
+    """
     path = Path(path)
+    display = display if display is not None else load_display_params(path)
+    data = params.to_dict()
+    data.update(display.to_dict())
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_name(path.name + ".tmp")
         temp.write_text(
-            json.dumps(params.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         os.replace(temp, path)
     except OSError:

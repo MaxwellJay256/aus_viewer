@@ -24,8 +24,10 @@ from PyQt5.QtCore import Qt, pyqtSignal
 
 from aus_data import USRecording, list_recordings, load_recording
 from preprocess import (
+    DisplayParams,
     PreprocessParams,
     apply_pipeline,
+    load_display_params,
     load_params,
     save_params,
     validate_bandpass,
@@ -188,6 +190,7 @@ class ViewerWindow(QtWidgets.QMainWindow):
 
         # 预处理状态
         self._params = load_params()
+        self._display_params = load_display_params()
         self._show_processed = False
         self._proc_data: Optional[np.ndarray] = None
         self._proc_signature: Optional[tuple] = None
@@ -207,6 +210,7 @@ class ViewerWindow(QtWidgets.QMainWindow):
         self._save_timer.timeout.connect(self._save_params)
 
         self._build_ui()
+        self.gamma_spin.setValue(self._display_params.get(self._show_processed))
 
         if folder is not None:
             self.load_folder(Path(folder))
@@ -286,7 +290,7 @@ class ViewerWindow(QtWidgets.QMainWindow):
         self.gamma_spin = QtWidgets.QDoubleSpinBox()
         self.gamma_spin.setRange(0.1, 3.0)
         self.gamma_spin.setSingleStep(0.1)
-        self.gamma_spin.setValue(0.2)
+        self.gamma_spin.setValue(self._display_params.get(False))
         self.gamma_spin.setDecimals(2)
         self.gamma_spin.setFixedWidth(72)
         self.gamma_spin.valueChanged.connect(self._on_display_changed)
@@ -718,6 +722,8 @@ class ViewerWindow(QtWidgets.QMainWindow):
         return [robust(crop[channel]) for channel in range(crop.shape[0])]
 
     def _on_display_changed(self, _value=None):
+        self._display_params.set(self._show_processed, self.gamma_spin.value())
+        self._save_timer.start()
         if self.rec is None:
             return
         crop = self._active_data()[:, self.t0 : self.t1, self.d0 : self.d1]
@@ -753,6 +759,11 @@ class ViewerWindow(QtWidgets.QMainWindow):
 
     def _on_preprocess_toggled(self, checked: bool):
         self._show_processed = checked
+        # 两种视图各自使用记住的 gamma；切换时只刷新 LUT，不重算数据
+        self.gamma_spin.blockSignals(True)
+        self.gamma_spin.setValue(self._display_params.get(checked))
+        self.gamma_spin.blockSignals(False)
+        self._refresh_gamma()
         if checked and self.rec is not None:
             signature = self._params.signature()
             if self._proc_data is not None and self._proc_signature == signature:
@@ -764,6 +775,13 @@ class ViewerWindow(QtWidgets.QMainWindow):
         else:
             self._proc_status.setText("预处理：关（显示原始）")
             self._refresh_display_source()
+
+    def _refresh_gamma(self):
+        if self.rec is None:
+            return
+        lut = build_lut(self.colormap_combo.currentText(), self.gamma_spin.value())
+        for plot in self._plots:
+            plot.image.setLookupTable(lut)
 
     def _refresh_display_source(self):
         if self.rec is None:
@@ -867,7 +885,7 @@ class ViewerWindow(QtWidgets.QMainWindow):
         self._update_a_mode()
 
     def _save_params(self):
-        save_params(self._params)
+        save_params(self._params, display=self._display_params)
 
     # ------------------------------------------------------------------
     # 帧与回放
@@ -1063,7 +1081,7 @@ class ViewerWindow(QtWidgets.QMainWindow):
         self._timer.stop()
         self._compute_timer.stop()
         self._save_timer.stop()
-        save_params(self._params)
+        save_params(self._params, display=self._display_params)
         if self._worker_running():
             try:
                 self._proc_thread.wait(3000)
