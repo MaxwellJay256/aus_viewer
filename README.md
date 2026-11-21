@@ -41,6 +41,7 @@ conda activate us-process
 python mview.py ../[记录文件夹]
 
 # 方式 2：Windows 系统下双击 ./run_viewer.bat
+./run_viewer.bat
 ```
 
 `Python mview.py` 会自动打开 `AUS-EMG-data/gnx` 下的第一个记录；启动后可通过顶部的“同级记录”下拉框快速切换同一目录下的全部记录。

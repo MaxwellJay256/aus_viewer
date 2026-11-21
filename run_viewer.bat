@@ -1,13 +1,19 @@
 @echo off
-chcp 65001 >nul
 setlocal
-set "PY=D:\Maxwe\miniconda3\envs\us-process\python.exe"
-if not exist "%PY%" (
-    echo 未找到 us-process 环境: %PY%
-    echo 请先运行: conda create -n us-process python=3.12 -y
+set "ENV_NAME=us-process"
+
+where conda >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] conda not found. Install Miniconda or Anaconda and add it to PATH.
     pause
     exit /b 1
 )
-"%PY%" "%~dp0mview.py" %*
-if errorlevel 1 pause
+
+conda run -n "%ENV_NAME%" --no-capture-output python "%~dp0mview.py" %*
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Failed to run the viewer. If the environment is missing, create it first:
+    echo     conda create -n %ENV_NAME% python=3.12
+    pause
+)
 endlocal
