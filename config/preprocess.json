@@ -1,0 +1,13 @@
+{
+  "bandpass_enabled": true,
+  "low_cut_mhz": 3.0,
+  "high_cut_mhz": 7.0,
+  "order": 4,
+  "tgc_enabled": true,
+  "tgc_strength": 0.4,
+  "envelope_enabled": true,
+  "log_enabled": false,
+  "log_k": 0.09000000000000002,
+  "standardize_enabled": true,
+  "normalize_enabled": true
+}

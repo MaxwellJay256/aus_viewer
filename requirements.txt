@@ -1,0 +1,9 @@
+# us-process 环境依赖（Python 3.12）
+# 仅超声数据处理与可视化所需，不包含 torch / onnxruntime 等机器学习库
+numpy>=2.1
+scipy>=1.14
+pyqtgraph>=0.13.7
+PyQt5>=5.15.11
+PyQt5-Qt5==5.15.2
+matplotlib>=3.9
+pillow>=10
